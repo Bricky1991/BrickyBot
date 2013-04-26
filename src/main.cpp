@@ -320,6 +320,27 @@ int main()
 
                             std::cout << "\t\t\tmessage: " << chat_text << std::endl;
 
+                            boost::char_separator<char> chat_sep(" ");
+                            boost::tokenizer<boost::char_separator<char> > chat_tok(chat_text, chat_sep);
+                            std::string chat_command = *(chat_tok.begin());
+                            
+                            int16_t chat_arg = -1;
+                            
+                            boost::tokenizer<boost::char_separator<char> >::iterator chat_tok_it = chat_tok.begin();
+                            if (++chat_tok_it != chat_tok.end())
+                            {
+                                try
+                                {
+                                    chat_arg = boost::lexical_cast<int16_t>(*chat_tok_it);
+                                }
+                                catch (boost::bad_lexical_cast &)
+                                {
+                                    std::cerr << "bad lexical cast: " << *chat_tok_it << std::endl;
+                                }
+                            }
+                            
+                            if (chat_arg < -1) chat_arg = -1;
+                            
                             /*
                              *    This is where the bot actually does interesting things.
                              */
@@ -341,7 +362,7 @@ int main()
                             }
 
                             // .poni
-                            if (boost::iequals(chat_text, ".poni"))
+                            if (boost::iequals(chat_command, ".poni"))
                             {
                                 // pick a random episode
                                 int episode = rand() % episodes.size();
@@ -358,7 +379,7 @@ int main()
                                 boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
                             }
                             
-                            if (boost::iequals(chat_text, ".shot") || boost::iequals(chat_text, ".drink"))
+                            if (boost::iequals(chat_command, ".shot") || boost::iequals(chat_command, ".drink"))
                             {
                                 // Find the user in the vector
                                 int32_t user_index = get_user_index_in_counts(sending_user, drinks);
@@ -368,13 +389,13 @@ int main()
                                 // Otherwise, add the user and initialize them with one drink.
                                 if (user_index != -1)
                                 {
-                                    drinks[user_index].second++;
+                                    drinks[user_index].second += chat_arg == -1? 1: chat_arg;
                                     current_drink_count = drinks[user_index].second;
                                 }
                                 else
                                 {
                                     drinks.push_back(std::make_pair(sending_user, 1));
-                                    current_drink_count = 1;
+                                    current_drink_count = chat_arg == -1? 1 : chat_arg;
                                 }
                                 
                                 // Write the changes to disk
@@ -391,7 +412,7 @@ int main()
                                 boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
                             }
                             
-                            if (boost::iequals(chat_text, ".weed") || boost::iequals(chat_text, ".hit") || boost::iequals(chat_text, ".toke"))
+                            if (boost::iequals(chat_command, ".weed") || boost::iequals(chat_command, ".hit") || boost::iequals(chat_command, ".toke"))
                             {
                                 // Find the user in the vector
                                 int32_t user_index = get_user_index_in_counts(sending_user, hits);
@@ -401,13 +422,13 @@ int main()
                                 // Otherwise, add the user and initialize them with one drink.
                                 if (user_index != -1)
                                 {
-                                    hits[user_index].second++;
+                                    hits[user_index].second += chat_arg == -1? 1: chat_arg;
                                     current_hit_count = hits[user_index].second;
                                 }
                                 else
                                 {
                                     hits.push_back(std::make_pair(sending_user, 1));
-                                    current_hit_count = 1;
+                                    current_hit_count = chat_arg == -1? 1: chat_arg;
                                 }
                                 
                                 // Write the changes to disk
@@ -424,7 +445,7 @@ int main()
                                 boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);                                
                             }
                             
-                            if (boost::iequals(chat_text, ".reset"))
+                            if (boost::iequals(chat_command, ".reset"))
                             {
                                 ////////////////// Reset Drink Count
                                 
@@ -470,7 +491,7 @@ int main()
                             
                             
                             // Print user's counts
-                            if (boost::iequals(chat_text, ".count"))
+                            if (boost::iequals(chat_command, ".count"))
                             {
                                 // Find the user in the vector
                                 int32_t user_index = get_user_index_in_counts(sending_user, drinks);
@@ -510,7 +531,7 @@ int main()
                             }
                             
                             // Print the channel's total number of recorded drinks
-                            if (boost::iequals(chat_text, ".chtotal"))
+                            if (boost::iequals(chat_command, ".chtotal"))
                             {
                                 uint32_t total = 0;
                                 for (std::vector<std::pair<std::string, uint16_t> >::iterator drinks_it = drinks.begin(); drinks_it != drinks.end(); drinks_it++)
@@ -535,6 +556,96 @@ int main()
                                 boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
                             }
                             
+                            // Send all the drink info
+                            if (boost::iequals(chat_command, ".chdrinks"))
+                            {
+                                send_str = source + " PRIVMSG " + channel + " :Channel Drinks: ";
+                                
+                                for (uint16_t i = 0; i < drinks.size(); i++)
+                                {
+                                    if (drinks[i].second > 0)
+                                    {
+                                        std::ostringstream num_to_str;
+                                        num_to_str << drinks[i].second;
+                                        send_str += drinks[i].first + ": " + num_to_str.str() + ". ";
+                                    }
+                                }
+                                
+                                send_str += "\r\n";
+                                
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                            }
+
+                            // Send all the hits info
+                            if (boost::iequals(chat_command, ".chhits"))
+                            {
+                                send_str = source + " PRIVMSG " + channel + " :Channel Hits: ";
+                                
+                                for (uint16_t i = 0; i < hits.size(); i++)
+                                {
+                                    if (hits[i].second > 0)
+                                    {
+                                        std::ostringstream num_to_str;
+                                        num_to_str << hits[i].second;
+                                        send_str += hits[i].first + ": " + num_to_str.str() + ". ";
+                                    }
+                                }
+                                
+                                send_str += "\r\n";
+                                
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                            }
+                            
+                            // Operator command to reset all drinks
+                            if (boost::iequals(chat_text, name + ": reset all drinks") && user_is_operator)
+                            {
+                                for (uint16_t i = 0; i < drinks.size(); i++)
+                                {
+                                    drinks[i].second = 0;
+                                }
+                                
+                                write_counts(drinks, "data/drinkcount");
+                                
+                                send_str = source + " PRIVMSG " + channel + " :All drinks were reset.\r\n";
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                            }
+                            
+                            // Operator command to reset all hits
+                            if (boost::iequals(chat_text, name + ": reset all hits") && user_is_operator)
+                            {
+                                for (uint16_t i = 0; i < hits.size(); i++)
+                                {
+                                    hits[i].second = 0;
+                                }
+                                
+                                write_counts(hits, "data/hitcount");
+                                
+                                send_str = source + " PRIVMSG " + channel + " :All hits were reset.\r\n";
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                            }
+                            
+                            // Operator command to reset both counters
+                            if (boost::iequals(chat_text, name + ": reset all") && user_is_operator)
+                            {
+                                for (uint16_t i = 0; i < drinks.size(); i++)
+                                {
+                                    drinks[i].second = 0;
+                                }
+                                
+                                write_counts(drinks, "data/drinkcount");
+                                
+                                
+                                for (uint16_t i = 0; i < hits.size(); i++)
+                                {
+                                    hits[i].second = 0;
+                                }
+                                
+                                write_counts(hits, "data/hitcount");   
+                                
+                                send_str = source + " PRIVMSG " + channel + " :All drinks and hits were reset.\r\n";
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                            }
+                            
                             // modifying responses while running
                             if (boost::iequals(chat_text, name + ": reload responses") && user_is_operator)
                             {
@@ -546,13 +657,12 @@ int main()
                             // simple response commands
                             for (std::vector<std::pair<std::string, std::string> >::iterator resp_it = responses.begin(); resp_it != responses.end(); resp_it++)
                             {
-                                if (boost::iequals(chat_text, (*resp_it).first))
+                                if (boost::iequals(chat_command, (*resp_it).first))
                                 {
                                     send_str = source + " PRIVMSG " + channel + " :" + (*resp_it).second + "\r\n";
                                     boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
                                 }
                             }
-                                
                         }
                         else if (tokens[1] == "KICK" && tokens[3] == name) // The bot was kicked
                         {
