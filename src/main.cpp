@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -305,42 +306,49 @@ int main()
                             // Check whether the sending user is an operator
                             bool user_is_operator = (std::find(operators.begin(), operators.end(), sending_user) != operators.end());
                             
+                            
                             // Find the start of the text
                             uint16_t chat_start_index = 2;
                             while (tokens[chat_start_index][0] != ':') ++chat_start_index;
-
+                            
                             // Add the first token (the start of the message) and remove the leading colon
                             std::string chat_text = tokens[chat_start_index];
                             chat_text.erase(0, 1);
-
+                            
                             for (uint16_t chat_text_index = chat_start_index + 1; chat_text_index < tokens.size(); ++chat_text_index)
                             {
                                 chat_text += " " + tokens[chat_text_index];
                             }
 
                             std::cout << "\t\t\tmessage: " << chat_text << std::endl;
-
+                            
                             boost::char_separator<char> chat_sep(" ");
                             boost::tokenizer<boost::char_separator<char> > chat_tok(chat_text, chat_sep);
-                            std::string chat_command = *(chat_tok.begin());
+                            std::string chat_command = chat_text;
                             
                             int16_t chat_arg = -1;
                             
-                            boost::tokenizer<boost::char_separator<char> >::iterator chat_tok_it = chat_tok.begin();
-                            if (++chat_tok_it != chat_tok.end())
+                            if (std::distance(chat_tok.begin(), chat_tok.end()) > 0)
                             {
-                                try
+                                chat_command =  *(chat_tok.begin());
+                                
+                                
+                                boost::tokenizer<boost::char_separator<char> >::iterator chat_tok_it = chat_tok.begin();
+                                if (++chat_tok_it != chat_tok.end())
                                 {
-                                    chat_arg = boost::lexical_cast<int16_t>(*chat_tok_it);
+                                    try
+                                    {
+                                        chat_arg = boost::lexical_cast<int16_t>(*chat_tok_it);
+                                    }
+                                    catch (boost::bad_lexical_cast &)
+                                    {
+                                        std::cerr << "bad lexical cast: " << *chat_tok_it << std::endl;
+                                    }
                                 }
-                                catch (boost::bad_lexical_cast &)
-                                {
-                                    std::cerr << "bad lexical cast: " << *chat_tok_it << std::endl;
-                                }
+                                
+                                if (chat_arg < -1) chat_arg = -1;
                             }
-                            
-                            if (chat_arg < -1) chat_arg = -1;
-                            
+                                
                             /*
                              *    This is where the bot actually does interesting things.
                              */
@@ -432,7 +440,7 @@ int main()
                                 }
                                 
                                 // Write the changes to disk
-                                 write_counts(drinks, "data/hitcount");
+                                 write_counts(hits, "data/hitcount");
                                 
                                 // Convert the number of drinks into a string
                                 std::ostringstream num_to_str;
