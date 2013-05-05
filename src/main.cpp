@@ -4,6 +4,7 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -17,8 +18,10 @@
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/ref.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/tokenizer.hpp>
+#include <boost/tuple/tuple.hpp>
 
 // libs: boost_system, boost_filesystem, boost_iostream, boost_thread (maybe not on linux systems)
 // on windwos, also link: wsock_32, ws2_32
@@ -55,6 +58,36 @@ std::vector<std::string> get_vector_from_file(std::string filename)
     return objs;
     
 }
+// -------- wrote this while pretty drunk ---------------
+std::vector<boost::tuple<std::string, std::string, std::string> > get_tuples_from_file(std::string filename)
+{
+    std::vector<boost::tuple<std::string, std::string, std::string> > tuples;
+    std::ifstream file(filename);
+    
+    if (!file.is_open())
+    {
+        std::cerr << "Error: could not open file: " << filename << std::endl;
+        return tuples;
+    }
+    
+    std::string line;
+    while (std::getline(file, line))
+    {
+        boost::char_separator<char> tok_sep(" ");
+        boost::tokenizer<boost::char_separator<char> > tok(line, tok_sep);
+        
+        std::vector<std::string> tokens;
+        for (boost::tokenizer<boost::char_separator<char> >::iterator it = tok.begin(); it != tok.end(); ++it)
+            tokens.push_back(*it);
+        
+        if (tokens.size() > 0)
+        {
+            tuples.push_back(boost::make_tuple(tokens[0], tokens.size() > 1? tokens[1]: "0", tokens.size() > 2? tokens[2]: "now")); 
+        }
+    }
+    
+    return tuples;
+}
 
 std::vector<std::pair<std::string, std::string> > get_pairs_from_file(std::string filename)
 {
@@ -83,6 +116,37 @@ std::vector<std::pair<std::string, std::string> > get_pairs_from_file(std::strin
     return pairs;
 }
 
+// -------- wrote this while pretty drunk ---------------
+std::vector<boost::tuple<std::string, uint16_t, time_t> > get_counts_from_tuples(std::vector<boost::tuple<std::string, std::string, std::string> > tuples)
+{
+    std::vector<boost::tuple<std::string, uint16_t, time_t> > counts;
+    for (std::vector<boost::tuple<std::string, std::string, std::string> >::iterator tuples_it = tuples.begin(); tuples_it != tuples.end(); ++tuples_it)
+    {
+        try
+        {
+            if (boost::get<1>((*tuples_it)) == "now")
+            {
+                time_t rawtime;
+                time(&rawtime);
+                counts.push_back(boost::make_tuple(boost::get<0>(*tuples_it), boost::lexical_cast<uint16_t>(boost::get<1>(*tuples_it)), rawtime));
+            }
+            else
+            {
+                counts.push_back(boost::make_tuple( boost::get<0>(*tuples_it),
+                                                    boost::lexical_cast<uint16_t>(boost::get<1>(*tuples_it)),
+                                                    boost::lexical_cast<time_t>(boost::get<2>(*tuples_it))
+                                ));
+            }
+        }
+        catch (boost::bad_lexical_cast &)
+        {
+            std::cerr << "bad lexical cast; this tuple will not be added to the counts: " << &(*tuples_it) << std::endl;
+        }
+    }
+    
+    return counts;
+}
+
 
 std::vector<std::pair<std::string, uint16_t> > get_counts_from_pairs(std::vector<std::pair<std::string, std::string> > pairs)
 {
@@ -103,6 +167,19 @@ std::vector<std::pair<std::string, uint16_t> > get_counts_from_pairs(std::vector
     
 }
 
+// -------- wrote this while pretty drunk ---------------
+void write_counts(std::vector<boost::tuple<std::string, uint16_t, time_t> > tuples, std::string filename)
+{
+    std::fstream file(filename, std::fstream::out | std::fstream::trunc);
+    
+    for (uint16_t i = 0; i < tuples.size(); i++)
+    {
+        file << boost::get<0>(tuples[i]) << " " << boost::get<1>(tuples[i]) << " " << boost::get<2>(tuples[i]) << std::endl;
+    }
+    
+    file.close();
+}
+
 void write_counts(std::vector<std::pair<std::string, uint16_t> > pairs, std::string filename)
 {
     std::fstream file(filename, std::fstream::out | std::fstream::trunc);
@@ -115,6 +192,31 @@ void write_counts(std::vector<std::pair<std::string, uint16_t> > pairs, std::str
     file.close();    
 }
 
+// -------- wrote this while pretty drunk ---------------
+int32_t get_user_index_in_counts(std::string user, std::vector<boost::tuple<std::string, uint16_t, time_t> > counts)
+{
+    bool found = false;
+    
+    int32_t index;
+    
+    for (uint16_t i = 0; i < counts.size() && !found; i++)
+    {
+        if (boost::iequals(boost::get<0>(counts[i]), user))
+        {
+            index = i;
+            found = true;
+        }
+    }
+    
+    if (found)
+    {
+        return index;
+    }
+    else
+    {
+        return -1;
+    }
+}
 
 int32_t get_user_index_in_counts(std::string user, std::vector<std::pair<std::string, uint16_t> > counts)
 {
@@ -166,9 +268,11 @@ int main()
     // initialize vectors    
     std::vector<std::string> operators = get_vector_from_file("data/operators");
     std::vector<std::string> episodes = get_vector_from_file("data/pony_episodes");
-    std::vector<std::pair<std::string, uint16_t> > drinks = get_counts_from_pairs(get_pairs_from_file("data/drinkcount"));
+    //std::vector<std::pair<std::string, uint16_t> > drinks = get_counts_from_pairs(get_pairs_from_file("data/drinkcount"));
+    std::vector<boost::tuple<std::string, uint16_t, time_t> > drinks = get_counts_from_tuples(get_tuples_from_file("data/drinkcount"));
     std::vector<std::pair<std::string, std::string> > responses = get_pairs_from_file("data/responses");
-    std::vector<std::pair<std::string, uint16_t> > hits = get_counts_from_pairs(get_pairs_from_file("data/hitcount"));
+    //std::vector<std::pair<std::string, uint16_t> > hits = get_counts_from_pairs(get_pairs_from_file("data/hitcount"));
+    std::vector<boost::tuple<std::string, uint16_t, time_t> > hits = get_counts_from_tuples(get_tuples_from_file("data/hitcount"));
     
     // set up signal handlers
     signal(SIGABRT, handleSignal);
@@ -351,6 +455,7 @@ int main()
                                 
                             /*
                              *    This is where the bot actually does interesting things.
+                             *    ---AT THIS INDENTATION, MOTHERFUCKERS.---
                              */
                             
                             // quit if an operator tells it to
@@ -393,18 +498,30 @@ int main()
                                 int32_t user_index = get_user_index_in_counts(sending_user, drinks);
                                 uint16_t current_drink_count;
                                 
-                                // If the user is already in the vector, increment the count.
-                                // Otherwise, add the user and initialize them with one drink.
+                                // If the user is already in the vector, increment the count and update the time.
+                                // Otherwise, add the user and initialize them.
                                 if (user_index != -1)
                                 {
-                                    drinks[user_index].second += chat_arg == -1? 1: chat_arg;
-                                    current_drink_count = drinks[user_index].second;
+                                    time_t rawtime;
+                                    time (&rawtime);
+                                    
+                                    drinks[user_index].get<1>() += chat_arg == -1? 1: chat_arg; 
+                                    current_drink_count = boost::get<1>(drinks[user_index]);
+                                    drinks[user_index].get<2>() = rawtime;
+                                    // drinks[user_index].second += chat_arg == -1? 1: chat_arg;
+                                    // current_drink_count = drinks[user_index].second;
                                 }
                                 else
-                                {
-                                    drinks.push_back(std::make_pair(sending_user, 1));
+                                {  ///////// Found a bug: if the user isn't in the array and adds more than one, it will only count as one, but
+                                   ///////// it will say that it added however many it said it would. or so I think. I'm pretty drunk right now.
+                                   time_t rawtime;
+                                   time (&rawtime);
+                                
+                                   drinks.push_back(boost::make_tuple(sending_user, 1, rawtime));
+                                    //drinks.push_back(std::make_pair(sending_user, 1));
                                     current_drink_count = chat_arg == -1? 1 : chat_arg;
                                 }
+                                
                                 
                                 // Write the changes to disk
                                 write_counts(drinks, "data/drinkcount");
@@ -430,14 +547,26 @@ int main()
                                 // Otherwise, add the user and initialize them with one drink.
                                 if (user_index != -1)
                                 {
-                                    hits[user_index].second += chat_arg == -1? 1: chat_arg;
-                                    current_hit_count = hits[user_index].second;
+                                    time_t rawtime;
+                                    time (&rawtime);  
+                                    
+                                    hits[user_index].get<1>() += chat_arg == -1? 1: chat_arg;
+                                    current_hit_count = boost::get<1>(drinks[user_index]);
+                                    hits[user_index].get<2>() = rawtime;
+                                    //hits[user_index].second += chat_arg == -1? 1: chat_arg;
+                                    //current_hit_count = hits[user_index].second;
                                 }
                                 else
-                                {
-                                    hits.push_back(std::make_pair(sending_user, 1));
+                                {  ///////// Found a bug: if the user isn't in the array and adds more than one, it will only count as one, but
+                                   ///////// it will say that it added however many it said it would. or so I think. I'm pretty drunk right now.
+                                   time_t rawtime;
+                                   time (&rawtime);  
+                                   
+                                    hits.push_back(boost::make_tuple(sending_user, 1, rawtime));
+                                    //hits.push_back(std::make_pair(sending_user, 1));
                                     current_hit_count = chat_arg == -1? 1: chat_arg;
                                 }
+
                                 
                                 // Write the changes to disk
                                  write_counts(hits, "data/hitcount");
@@ -463,11 +592,15 @@ int main()
                                 // set that user's shot/drink count to zero
                                 if (user_index != -1)
                                 {
-                                    drinks[user_index].second = 0;
+                                    //drinks[user_index].second = 0;
+                                    drinks[user_index].get<1>() = 0;
                                 }
                                 else
                                 {
-                                    drinks.push_back(std::make_pair(sending_user, 0));
+                                    time_t rawtime;
+                                    time(&rawtime);
+                                    //drinks.push_back(std::make_pair(sending_user, 0));
+                                    drinks.push_back(boost::make_tuple(sending_user, 0, rawtime)); 
                                 }
                                 
                                 // write changes to disk
@@ -481,11 +614,15 @@ int main()
                                 // set that user's hit count to zero
                                 if (user_index != -1)
                                 {
-                                    hits[user_index].second = 0;
+                                    //hits[user_index].second = 0;
+                                    hits[user_index].get<1>() = 0;
                                 }
                                 else
                                 {
-                                    hits.push_back(std::make_pair(sending_user, 0));
+                                    time_t rawtime;
+                                    time(&rawtime);
+                                    //hits.push_back(std::make_pair(sending_user, 0));
+                                    hits.push_back(boost::make_tuple(sending_user, 0, rawtime));
                                 }
                                 
                                 // write changes to disk
@@ -509,7 +646,8 @@ int main()
                                 if (user_index != -1)
                                 {
                                     std::ostringstream num_to_str;
-                                    num_to_str << drinks[user_index].second;
+                                    //num_to_str << drinks[user_index].second;
+                                    num_to_str << drinks[user_index].get<1>();
                                     send_str += num_to_str.str();
                                 }
                                 else
@@ -524,7 +662,8 @@ int main()
                                 if (user_index != -1)
                                 {
                                     std::ostringstream num_to_str;
-                                    num_to_str << hits[user_index].second;
+                                    //num_to_str << hits[user_index].second;
+                                    num_to_str << hits[user_index].get<1>();
                                     send_str += num_to_str.str();
                                 }
                                 else
@@ -538,13 +677,67 @@ int main()
                                 boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
                             }
                             
+                            // Print the time of the user's last count update
+                            if (boost::iequals(chat_command, ".lastdrink"))
+                            {
+                                int32_t user_index = get_user_index_in_counts(sending_user, drinks);
+                                
+                                send_str = source + " PRIVMSG " + channel + " :" + sending_user + ": ";
+                                
+                                if (user_index != -1)
+                                {
+                                    if (boost::get<1>(drinks[user_index]) > 0)
+                                    {
+                                        send_str += "Last counted drink was at " + std::string(ctime(&(boost::get<2>(drinks[user_index])))) + ".\r\n";
+                                    }
+                                    else
+                                    {
+                                        send_str += "You have no counted drinks.\r\n";
+                                    }
+                                }
+                                else
+                                {
+                                    send_str += "You have no counted drinks.\r\n";
+                                }
+                                
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                                
+                            }
+                            if (boost::iequals(chat_command, ".lasthit"))
+                            {
+                                int32_t user_index = get_user_index_in_counts(sending_user, drinks);
+                                
+                                send_str = source + " PRIVMSG " + channel + " :" + sending_user + ": ";
+                                
+                                if (user_index != -1)
+                                {
+                                    if (boost::get<1>(hits[user_index]) > 0)
+                                    {
+                                        send_str += "Last counted hit was at " + std::string(ctime(&(boost::get<2>(hits[user_index])))) + ".\r\n";
+                                    }
+                                    else
+                                    {
+                                        send_str += "You have no counted hits.\r\n";
+                                    }
+                                }
+                                else
+                                {
+                                    send_str += "You have no counted hits.\r\n";
+                                }
+                                
+                                boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
+                            }
+                            
+                            
                             // Print the channel's total number of recorded drinks
                             if (boost::iequals(chat_command, ".chtotal"))
                             {
                                 uint32_t total = 0;
-                                for (std::vector<std::pair<std::string, uint16_t> >::iterator drinks_it = drinks.begin(); drinks_it != drinks.end(); drinks_it++)
+                                //for (std::vector<std::pair<std::string, uint16_t> >::iterator drinks_it = drinks.begin(); drinks_it != drinks.end(); drinks_it++)
+                                for (std::vector<boost::tuple<std::string, uint16_t, time_t> >::iterator drinks_it = drinks.begin(); drinks_it != drinks.end(); drinks_it++)
                                 {
-                                    total += (*drinks_it).second;
+                                    //total += (*drinks_it).second;
+                                    total += boost::get<1>(*drinks_it);
                                 }
                                 
                                 std::ostringstream num_to_str;
@@ -552,9 +745,11 @@ int main()
                                 send_str = source + " PRIVMSG " + channel + " :Total drinks: " + num_to_str.str() + "; ";
                                 
                                 total = 0;
-                                for (std::vector<std::pair<std::string, uint16_t> >::iterator hits_it = hits.begin(); hits_it != hits.end(); hits_it++)
+                                //for (std::vector<std::pair<std::string, uint16_t> >::iterator hits_it = hits.begin(); hits_it != hits.end(); hits_it++)
+                                for (std::vector<boost::tuple<std::string, uint16_t, time_t> >::iterator hits_it = hits.begin(); hits_it != hits.end(); hits_it++)
                                 {
-                                    total += (*hits_it).second;
+                                    //total += (*hits_it).second;
+                                    total += boost::get<1>(*hits_it);
                                 }
                                 
                                 std::ostringstream num_to_str2;
@@ -571,11 +766,14 @@ int main()
                                 
                                 for (uint16_t i = 0; i < drinks.size(); i++)
                                 {
-                                    if (drinks[i].second > 0)
+                                    //if (drinks[i].second > 0)
+                                    if (drinks[i].get<1>() > 0)
                                     {
                                         std::ostringstream num_to_str;
-                                        num_to_str << drinks[i].second;
-                                        send_str += drinks[i].first + ": " + num_to_str.str() + ". ";
+                                        //num_to_str << drinks[i].second;
+                                        num_to_str <<  boost::get<1>(drinks[i]);
+                                        //send_str += drinks[i].first + ": " + num_to_str.str() + ". ";
+                                        send_str += boost::get<0>(drinks[i]) + ": " + num_to_str.str() + ". ";
                                     }
                                 }
                                 
@@ -591,11 +789,14 @@ int main()
                                 
                                 for (uint16_t i = 0; i < hits.size(); i++)
                                 {
-                                    if (hits[i].second > 0)
+                                    //if (hits[i].second > 0)
+                                    if (hits[i].get<1>() > 0)
                                     {
                                         std::ostringstream num_to_str;
-                                        num_to_str << hits[i].second;
-                                        send_str += hits[i].first + ": " + num_to_str.str() + ". ";
+                                        //num_to_str << hits[i].second;
+                                        num_to_str << boost::get<1>(drinks[i]);
+                                        //send_str += hits[i].first + ": " + num_to_str.str() + ". ";
+                                        send_str += boost::get<0>(drinks[i]) + ": " + num_to_str.str() + ". ";
                                     }
                                 }
                                 
@@ -603,13 +804,14 @@ int main()
                                 
                                 boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
                             }
-                            
+                             
                             // Operator command to reset all drinks
                             if (boost::iequals(chat_text, name + ": reset all drinks") && user_is_operator)
                             {
                                 for (uint16_t i = 0; i < drinks.size(); i++)
                                 {
-                                    drinks[i].second = 0;
+                                    drinks[i].get<1>() = 0;
+                                    // drinks[i].second = 0;
                                 }
                                 
                                 write_counts(drinks, "data/drinkcount");
@@ -623,7 +825,8 @@ int main()
                             {
                                 for (uint16_t i = 0; i < hits.size(); i++)
                                 {
-                                    hits[i].second = 0;
+                                    //hits[i].second = 0;
+                                    hits[i].get<1>() = 0;
                                 }
                                 
                                 write_counts(hits, "data/hitcount");
@@ -637,7 +840,8 @@ int main()
                             {
                                 for (uint16_t i = 0; i < drinks.size(); i++)
                                 {
-                                    drinks[i].second = 0;
+                                    //drinks[i].second = 0;
+                                    drinks[i].get<1>() = 0;
                                 }
                                 
                                 write_counts(drinks, "data/drinkcount");
@@ -645,7 +849,9 @@ int main()
                                 
                                 for (uint16_t i = 0; i < hits.size(); i++)
                                 {
-                                    hits[i].second = 0;
+                                    //hits[i].second = 0;
+                                    hits[i].get<1>() = 0;
+                                    
                                 }
                                 
                                 write_counts(hits, "data/hitcount");   
