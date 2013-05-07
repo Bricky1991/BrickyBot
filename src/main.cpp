@@ -551,7 +551,7 @@ int main()
                                     time (&rawtime);  
                                     
                                     hits[user_index].get<1>() += chat_arg == -1? 1: chat_arg;
-                                    current_hit_count = boost::get<1>(drinks[user_index]);
+                                    current_hit_count = boost::get<1>(hits[user_index]);
                                     hits[user_index].get<2>() = rawtime;
                                     //hits[user_index].second += chat_arg == -1? 1: chat_arg;
                                     //current_hit_count = hits[user_index].second;
