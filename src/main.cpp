@@ -2,6 +2,7 @@
 #define BOOST_THREAD_USE_LIB
 
 #include <csignal>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -27,11 +28,23 @@
 // on windwos, also link: wsock_32, ws2_32
 
 bool running = true;
+bool debug = false;
 
 // quit upon ^c from the console
 void handleSignal(int signal)
 {
     running = false;
+}
+
+void dbgPrint(const char* format, ...)
+{
+    if (debug)
+    {
+        va_list args;
+        va_start(args, format);
+        vprintf(format, args);
+        va_end(args);
+    }
 }
 
 std::vector<std::string> get_vector_from_file(std::string filename)
@@ -58,7 +71,7 @@ std::vector<std::string> get_vector_from_file(std::string filename)
     return objs;
     
 }
-// -------- wrote this while pretty drunk ---------------
+
 std::vector<boost::tuple<std::string, std::string, std::string> > get_tuples_from_file(std::string filename)
 {
     std::vector<boost::tuple<std::string, std::string, std::string> > tuples;
@@ -116,7 +129,6 @@ std::vector<std::pair<std::string, std::string> > get_pairs_from_file(std::strin
     return pairs;
 }
 
-// -------- wrote this while pretty drunk ---------------
 std::vector<boost::tuple<std::string, uint16_t, time_t> > get_counts_from_tuples(std::vector<boost::tuple<std::string, std::string, std::string> > tuples)
 {
     std::vector<boost::tuple<std::string, uint16_t, time_t> > counts;
@@ -192,7 +204,6 @@ void write_counts(std::vector<std::pair<std::string, uint16_t> > pairs, std::str
     file.close();    
 }
 
-// -------- wrote this while pretty drunk ---------------
 int32_t get_user_index_in_counts(std::string user, std::vector<boost::tuple<std::string, uint16_t, time_t> > counts)
 {
     bool found = false;
@@ -263,15 +274,14 @@ int main()
         else if ((*options_it).first == "port") port = (*options_it).second;
         else if ((*options_it).first == "channel") channel = (*options_it).second;
         else if ((*options_it).first == "auto_reconnect" && (*options_it).second == "true") auto_reconnect = true;
+        else if ((*options_it).first == "debug" && (*options_it).second == "true") debug = true;
     }
 
     // initialize vectors    
     std::vector<std::string> operators = get_vector_from_file("data/operators");
     std::vector<std::string> episodes = get_vector_from_file("data/pony_episodes");
-    //std::vector<std::pair<std::string, uint16_t> > drinks = get_counts_from_pairs(get_pairs_from_file("data/drinkcount"));
     std::vector<boost::tuple<std::string, uint16_t, time_t> > drinks = get_counts_from_tuples(get_tuples_from_file("data/drinkcount"));
     std::vector<std::pair<std::string, std::string> > responses = get_pairs_from_file("data/responses");
-    //std::vector<std::pair<std::string, uint16_t> > hits = get_counts_from_pairs(get_pairs_from_file("data/hitcount"));
     std::vector<boost::tuple<std::string, uint16_t, time_t> > hits = get_counts_from_tuples(get_tuples_from_file("data/hitcount"));
     
     // set up signal handlers
@@ -293,7 +303,6 @@ int main()
         uint64_t num_in = 0;
         bool first_ping = false;
         bool in_channel = false;
-
         
         while (running)
         {
@@ -331,7 +340,7 @@ int main()
                 // Process each message
                 for (uint16_t i = 0; i < message_strings.size(); ++i)
                 {
-                    std::cout << "incoming: " << message_strings[i] << std::endl;
+                    dbgPrint("incoming: %s\n", message_strings[i].c_str());
 
                     // Tokenize the message
                     boost::char_separator<char> sep(" ");
@@ -352,9 +361,6 @@ int main()
                         // Add the carriage return and newline, as per IRC protocol
                         send_str += "\r\n";
 
-                        // Print the string to the console
-                        std::cout << "\toutgoing: " << send_str << std::endl;
-
                         // Send it to the server
                         boost::asio::write(socket, boost::asio::buffer(send_str), ignored_error);
 
@@ -373,9 +379,6 @@ int main()
                         std::string user_msg_str = "USER " + name + " 0 * :" + name + "\r\n";
                         boost::asio::write(socket, boost::asio::buffer(nick_msg_str), ignored_error);
                         boost::asio::write(socket, boost::asio::buffer(user_msg_str), ignored_error);
-
-                        std::cout << "\toutgoing: " << nick_msg_str;
-                        std::cout << "\toutgoing: " << user_msg_str;
                     }
 
                     // Join the channel when appropriate
@@ -397,9 +400,6 @@ int main()
                         // Used to send messages
                         std::string send_str;
 
-                        // Print the number of messages from the server
-                        std::cout << num_in << std::endl;
-
                         if (tokens[1] == "PRIVMSG") // gettin a message
                         {
                             // Get the name of the sending user
@@ -409,7 +409,6 @@ int main()
                             
                             // Check whether the sending user is an operator
                             bool user_is_operator = (std::find(operators.begin(), operators.end(), sending_user) != operators.end());
-                            
                             
                             // Find the start of the text
                             uint16_t chat_start_index = 2;
@@ -424,8 +423,6 @@ int main()
                                 chat_text += " " + tokens[chat_text_index];
                             }
 
-                            std::cout << "\t\t\tmessage: " << chat_text << std::endl;
-                            
                             boost::char_separator<char> chat_sep(" ");
                             boost::tokenizer<boost::char_separator<char> > chat_tok(chat_text, chat_sep);
                             std::string chat_command = chat_text;
@@ -436,7 +433,6 @@ int main()
                             {
                                 chat_command =  *(chat_tok.begin());
                                 
-                                
                                 boost::tokenizer<boost::char_separator<char> >::iterator chat_tok_it = chat_tok.begin();
                                 if (++chat_tok_it != chat_tok.end())
                                 {
@@ -446,7 +442,7 @@ int main()
                                     }
                                     catch (boost::bad_lexical_cast &)
                                     {
-                                        std::cerr << "bad lexical cast: " << *chat_tok_it << std::endl;
+                                        BB
                                     }
                                 }
                                 
@@ -906,7 +902,7 @@ int main()
     }
     catch (std::exception e)
     {
-        std::cout << "Exception..." << std::endl;
+        std::cerr << "Exception..." << std::endl;
         std::cerr << e.what() << std::endl;
     }
 
